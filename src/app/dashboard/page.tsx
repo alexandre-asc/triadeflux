@@ -256,6 +256,9 @@ export default function DashboardPage() {
     finally { setLancLoading(false) }
   }
 
+  const now_bsb = now.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'})
+  const date_bsb = now.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',year:'numeric'})
+
   // Abrir modal de edição
   function abrirEditar(l: Lancamento) {
     setEditando(l)
@@ -296,7 +299,6 @@ export default function DashboardPage() {
       await loadData()
     } catch { toast.error('Erro ao excluir lançamento') }
   }
-  const date_bsb = now.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',year:'numeric'})
 
   if (loading || dataLoading) return (
     <div className="fixed inset-0 flex items-center justify-center" style={{background:'#06091a'}}>

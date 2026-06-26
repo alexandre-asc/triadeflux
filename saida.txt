@@ -5,15 +5,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { getLancamentos, calcularKPIs, calcularDRE, gerarAlertas } from '@/lib/firestore'
 import type { Lancamento, KPIs, DRE, Alerta } from '@/types'
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, Wallet, DollarSign, Target, Activity,
   Bell, Upload, FileText, LogOut, LayoutDashboard, PenLine,
   FolderOpen, BarChart2, Waves, GitCompare, Bot, Menu, X,
-  ChevronUp, ChevronDown, Send, Loader2, ArrowUpRight, ArrowDownRight,
-  Calendar, Filter, Download, RefreshCw, Info
+  ChevronUp, ChevronDown, Send, Loader2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -24,9 +23,6 @@ const fmtK = (n: number) => n >= 1000 ? `R$${(n/1000).toFixed(0)}k` : `R$${n.toF
 
 // ── Cores Tríade Flux ──
 const COLORS = ['#3a7bd5','#1a9a5c','#5c4db1','#f59e0b','#f87171','#5b9be8']
-
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 // ── Componentes base ──
 function Card({ children, className = '', glow = false }: { children: React.ReactNode, className?: string, glow?: boolean }) {
@@ -97,12 +93,6 @@ export default function DashboardPage() {
   const [dataLoading,setDataLoading]= useState(true)
   const [now,        setNow]        = useState(new Date())
 
-  // Filtros
-  const [dreMonth, setDreMonth] = useState(new Date().getMonth())
-  const [dreYear,  setDreYear]  = useState(new Date().getFullYear())
-  const [fluxoMonth, setFluxoMonth] = useState(new Date().getMonth())
-  const [fluxoYear,  setFluxoYear]  = useState(new Date().getFullYear())
-
   // Chat
   const [chatMsgs,   setChatMsgs]   = useState<{role:'user'|'ai', text:string}[]>([
     { role:'ai', text:'Olá! Sou o CFO AI da Tríade Flux. Tenho acesso completo aos seus dados financeiros. O que gostaria de analisar?' }
@@ -153,58 +143,23 @@ export default function DashboardPage() {
 
   // Dados para gráficos (últimos 6 meses)
   const chartData = (() => {
+    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
     const hoje = new Date()
     return Array.from({length:6}, (_,i) => {
       const d = new Date(hoje.getFullYear(), hoje.getMonth()-5+i, 1)
       const m = d.getMonth()+1; const a = d.getFullYear()
       const rec = lancamentos.filter(l=>l.tipo==='receita'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
       const dep = lancamentos.filter(l=>l.tipo==='despesa'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
-      return { mes:`${MESES_SHORT[m-1]}/${String(a).slice(2)}`, receita:rec, despesa:dep, lucro:rec-dep }
+      return { mes:`${meses[m-1]}/${String(a).slice(2)}`, receita:rec, despesa:dep, lucro:rec-dep }
     })
   })()
 
-  // DRE do mês selecionado
-  const dreAtual = (() => {
-    return calcularDRE(lancamentos, dreMonth+1, dreYear)
-  })()
-
-  // Dados fluxo de caixa (dia a dia do mês selecionado)
-  const fluxoData = (() => {
-    const ano = fluxoYear
-    const mes = fluxoMonth+1
-    const diasNoMes = new Date(ano, mes, 0).getDate()
-    let saldoAcumulado = 0
-    return Array.from({length: diasNoMes}, (_, i) => {
-      const dia = i + 1
-      const dataStr = `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`
-      const recDia = lancamentos.filter(l => l.tipo==='receita' && l.data===dataStr).reduce((s,l)=>s+l.valor,0)
-      const depDia = lancamentos.filter(l => l.tipo==='despesa' && l.data===dataStr).reduce((s,l)=>s+l.valor,0)
-      saldoAcumulado += recDia - depDia
-      return { dia: String(dia).padStart(2,'0'), entradas: recDia, saidas: depDia, saldo: saldoAcumulado }
-    }).filter(d => d.entradas > 0 || d.saidas > 0 || d.saldo !== 0)
-  })()
-
-  // Dados comparativos (12 meses)
-  const comparativosData = (() => {
+  // Dados do donut
+  const donutData = (() => {
+    const cats: Record<string,number> = {}
     const hoje = new Date()
-    return Array.from({length:12}, (_,i) => {
-      const d = new Date(hoje.getFullYear(), hoje.getMonth()-11+i, 1)
-      const m = d.getMonth()+1; const a = d.getFullYear()
-      const rec = lancamentos.filter(l=>l.tipo==='receita'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
-      const dep = lancamentos.filter(l=>l.tipo==='despesa'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
-      const margem = rec > 0 ? ((rec-dep)/rec)*100 : 0
-      return { mes:`${MESES_SHORT[m-1]}/${String(a).slice(2)}`, receita:rec, despesa:dep, lucro:rec-dep, margem }
-    })
-  })()
-
-  // Dados relatório por categoria
-  const relatorioCategoria = (() => {
-    const cats: Record<string,{receita:number,despesa:number}> = {}
-    lancamentos.forEach(l => {
-      if (!cats[l.categoria]) cats[l.categoria] = {receita:0,despesa:0}
-      cats[l.categoria][l.tipo] += l.valor
-    })
-    return Object.entries(cats).map(([cat,v]) => ({cat, ...v, total: v.receita - v.despesa})).sort((a,b)=>b.total-a.total)
+    lancamentos.filter(l=>l.tipo==='receita'&&new Date(l.data).getMonth()===hoje.getMonth()).forEach(l=>{cats[l.categoria]=(cats[l.categoria]||0)+l.valor})
+    return Object.entries(cats).map(([name,value])=>({name,value}))
   })()
 
   // Chat IA
@@ -356,6 +311,7 @@ export default function DashboardPage() {
           <div className="font-display font-semibold flex-1" style={{fontSize:15}}>
             {NAV.find(n=>n.id===view)?.label||'Dashboard'}
           </div>
+          {/* Info pills */}
           <div className="hidden md:flex items-center gap-2">
             {[
               {label:date_bsb},
@@ -367,6 +323,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          {/* Regime toggle */}
           <div className="flex p-0.5 rounded-lg gap-0.5" style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.1)'}}>
             {(['competencia','caixa'] as const).map(r=>(
               <button key={r} onClick={()=>setRegime(r)}
@@ -391,6 +348,8 @@ export default function DashboardPage() {
               <div style={{fontSize:10,fontWeight:600,letterSpacing:'1.2px',textTransform:'uppercase',color:'#3d5280'}}>
                 Indicadores Executivos · {now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}
               </div>
+
+              {/* KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
                 <KPICard glow label="SALDO ATUAL"        value={fmt(kpis.saldoAtual)}    delta={`+12% vs mês ant.`} deltaUp icon={Wallet}/>
                 <KPICard label="RECEITA DO MÊS"   value={fmt(kpis.receitaMes)}   delta={kpis.receitaAnterior>0?`${(((kpis.receitaMes-kpis.receitaAnterior)/kpis.receitaAnterior)*100).toFixed(1)}% vs ant.`:undefined} deltaUp={kpis.receitaMes>=kpis.receitaAnterior} icon={TrendingUp}/>
@@ -401,7 +360,10 @@ export default function DashboardPage() {
                 <KPICard label="PONTO EQUILÍBRIO" value={fmt(kpis.pontoEquilibrio)} delta={kpis.receitaMes>=kpis.pontoEquilibrio?'✓ Atingido':'Ainda não atingido'} deltaUp={kpis.receitaMes>=kpis.pontoEquilibrio} icon={Target}/>
                 <KPICard label="GERAÇÃO DE CAIXA" value={fmt(kpis.geracaoCaixa)} delta="Caixa operacional" deltaUp={kpis.geracaoCaixa>0} icon={Waves}/>
               </div>
+
+              {/* Charts row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Evolução mensal */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between mb-4">
                     <div style={{fontSize:12,fontWeight:500,color:'#7a93c8'}}>Evolução Mensal</div>
@@ -424,6 +386,8 @@ export default function DashboardPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
+
+                {/* DRE resumida */}
                 {dre && (
                   <Card className="p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -451,7 +415,10 @@ export default function DashboardPage() {
                   </Card>
                 )}
               </div>
+
+              {/* Bottom row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Alertas */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div style={{fontSize:12,fontWeight:500,color:'#7a93c8'}}>🔔 Alertas Inteligentes</div>
@@ -472,6 +439,8 @@ export default function DashboardPage() {
                     })}
                   </div>
                 </Card>
+
+                {/* Categorias */}
                 <Card className="p-4">
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>Despesas por Categoria</div>
                   {(() => {
@@ -479,7 +448,6 @@ export default function DashboardPage() {
                     const hoje = new Date()
                     lancamentos.filter(l=>l.tipo==='despesa'&&new Date(l.data).getMonth()===hoje.getMonth()).forEach(l=>{cats[l.categoria]=(cats[l.categoria]||0)+l.valor})
                     const total = Object.values(cats).reduce((s,v)=>s+v,0)
-                    if (total === 0) return <div style={{fontSize:11,color:'#3d5280',textAlign:'center',padding:'1rem'}}>Sem despesas no mês</div>
                     return Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([cat,val],i)=>(
                       <div key={i} className="mb-2">
                         <div className="flex justify-between mb-1" style={{fontSize:10,color:'#7a93c8'}}>
@@ -492,6 +460,8 @@ export default function DashboardPage() {
                     ))
                   })()}
                 </Card>
+
+                {/* Resumo executivo */}
                 <Card className="p-4 flex flex-col gap-3">
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8'}}>📋 Análise Executiva</div>
                   <p style={{fontSize:11,color:'#7a93c8',lineHeight:1.7}}>
@@ -512,8 +482,10 @@ export default function DashboardPage() {
           {view === 'lancamentos' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Form */}
                 <Card className="p-4">
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Novo Lançamento</div>
+                  {/* Tipo toggle */}
                   <div className="flex gap-2 mb-4">
                     {(['receita','despesa'] as const).map(t=>(
                       <button key={t} onClick={()=>setLancForm(f=>({...f,tipo:t}))}
@@ -570,6 +542,8 @@ export default function DashboardPage() {
                     </button>
                   </form>
                 </Card>
+
+                {/* Lista recentes */}
                 <Card className="p-4">
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>Últimos Lançamentos</div>
                   <div className="space-y-1 overflow-y-auto" style={{maxHeight:420}}>
@@ -594,407 +568,12 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ══ VIEW: DRE GERENCIAL ══ */}
-          {view === 'dre' && (
-            <div className="space-y-4">
-              {/* Filtro de mês */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#3d5280'}}>Período</div>
-                <div className="flex gap-2">
-                  <select value={dreMonth} onChange={e=>setDreMonth(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-lg outline-none text-xs"
-                    style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff'}}>
-                    {MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}
-                  </select>
-                  <select value={dreYear} onChange={e=>setDreYear(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-lg outline-none text-xs"
-                    style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff'}}>
-                    {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-                <div style={{fontSize:11,color:'#3d5280'}}>
-                  {lancamentos.filter(l=>{const d=new Date(l.data);return d.getMonth()===dreMonth&&d.getFullYear()===dreYear}).length} lançamentos no período
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* DRE principal */}
-                <div className="lg:col-span-2 space-y-3">
-                  <Card className="p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <div style={{fontSize:14,fontWeight:600,color:'#dce8ff'}}>Demonstração do Resultado</div>
-                        <div style={{fontSize:11,color:'#3d5280'}}>{MESES[dreMonth]} de {dreYear}</div>
-                      </div>
-                      <div className="px-3 py-1 rounded-full" style={{background:'rgba(26,154,92,0.1)',border:'0.5px solid rgba(26,154,92,0.2)',fontSize:11,color:'#1a9a5c'}}>
-                        Regime {regime==='competencia'?'Competência':'Caixa'}
-                      </div>
-                    </div>
-
-                    {/* Receitas */}
-                    <div className="mb-3">
-                      <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#3a7bd5',marginBottom:8,paddingBottom:4,borderBottom:'0.5px solid rgba(58,123,213,0.2)'}}>RECEITAS</div>
-                      {[
-                        {k:'(+) Receita Bruta',         v:dreAtual.receitaBruta,   indent:false, bold:false, color:'#dce8ff'},
-                        {k:'(–) Devoluções (est. 1,3%)',v:-dreAtual.devolucoes,    indent:true,  bold:false, color:'#f87171'},
-                        {k:'(–) Impostos (est. 10%)',   v:-dreAtual.impostos,      indent:true,  bold:false, color:'#f87171'},
-                        {k:'(=) Receita Líquida',       v:dreAtual.receitaLiquida, indent:false, bold:true,  color:'#5b9be8'},
-                      ].map((r,i)=>(
-                        <div key={i} className={`flex justify-between py-1.5 ${r.indent?'pl-4':''}`} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)',fontSize:12}}>
-                          <span style={{color:r.bold?'#dce8ff':'#7a93c8',fontWeight:r.bold?600:400}}>{r.k}</span>
-                          <span style={{fontWeight:r.bold?700:500,color:r.color}}>{r.v<0?'-':''}{fmt(Math.abs(r.v))}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Custos */}
-                    <div className="mb-3">
-                      <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#f59e0b',marginBottom:8,paddingBottom:4,borderBottom:'0.5px solid rgba(245,158,11,0.2)'}}>CUSTOS</div>
-                      {[
-                        {k:'(–) Custo dos Produtos/Serviços', v:-dreAtual.custosProdutos,  indent:true,  bold:false, color:'#f87171'},
-                        {k:'(–) Custos Variáveis',            v:-dreAtual.custosVariaveis, indent:true,  bold:false, color:'#f87171'},
-                        {k:'(=) Lucro Bruto',                 v:dreAtual.lucroBruto,       indent:false, bold:true,  color:'#1a9a5c'},
-                      ].map((r,i)=>(
-                        <div key={i} className={`flex justify-between py-1.5 ${r.indent?'pl-4':''}`} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)',fontSize:12}}>
-                          <span style={{color:r.bold?'#dce8ff':'#7a93c8',fontWeight:r.bold?600:400}}>{r.k}</span>
-                          <span style={{fontWeight:r.bold?700:500,color:r.color}}>{r.v<0?'-':''}{fmt(Math.abs(r.v))}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Despesas operacionais */}
-                    <div className="mb-3">
-                      <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#f87171',marginBottom:8,paddingBottom:4,borderBottom:'0.5px solid rgba(248,113,113,0.2)'}}>DESPESAS OPERACIONAIS</div>
-                      {[
-                        {k:'(–) Despesas com Pessoal',    v:-dreAtual.despPessoal,         indent:true,  bold:false, color:'#f87171'},
-                        {k:'(–) Marketing e Vendas',      v:-dreAtual.despMarketing,        indent:true,  bold:false, color:'#f87171'},
-                        {k:'(–) Administrativas / TI',    v:-dreAtual.despAdministrativas,  indent:true,  bold:false, color:'#f87171'},
-                        {k:'(–) Depreciação (est. 1,6%)', v:-dreAtual.depreciacao,          indent:true,  bold:false, color:'#f87171'},
-                        {k:'(=) EBITDA',                  v:dreAtual.ebitda,                indent:false, bold:true,  color:'#5b9be8'},
-                      ].map((r,i)=>(
-                        <div key={i} className={`flex justify-between py-1.5 ${r.indent?'pl-4':''}`} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)',fontSize:12}}>
-                          <span style={{color:r.bold?'#dce8ff':'#7a93c8',fontWeight:r.bold?600:400}}>{r.k}</span>
-                          <span style={{fontWeight:r.bold?700:500,color:r.color}}>{r.v<0?'-':''}{fmt(Math.abs(r.v))}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Resultado financeiro */}
-                    <div className="mb-4">
-                      <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#5c4db1',marginBottom:8,paddingBottom:4,borderBottom:'0.5px solid rgba(92,77,177,0.2)'}}>RESULTADO FINANCEIRO</div>
-                      {[
-                        {k:'(±) Receitas/Despesas Financeiras', v:dreAtual.resultadoFinanceiro, indent:true, bold:false, color:dreAtual.resultadoFinanceiro>=0?'#1a9a5c':'#f87171'},
-                        {k:'(–) IR e CSLL (est. 7,5%)',         v:-dreAtual.irCsll,             indent:true, bold:false, color:'#f87171'},
-                      ].map((r,i)=>(
-                        <div key={i} className={`flex justify-between py-1.5 ${r.indent?'pl-4':''}`} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)',fontSize:12}}>
-                          <span style={{color:'#7a93c8'}}>{r.k}</span>
-                          <span style={{fontWeight:500,color:r.color}}>{r.v<0?'-':''}{fmt(Math.abs(r.v))}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Lucro final */}
-                    <div className="flex justify-between items-center px-3 py-3 rounded-xl" style={{background:dreAtual.lucroLiquido>=0?'rgba(26,154,92,0.08)':'rgba(248,113,113,0.08)',border:`0.5px solid ${dreAtual.lucroLiquido>=0?'rgba(26,154,92,0.25)':'rgba(248,113,113,0.25)'}`}}>
-                      <span style={{fontWeight:700,color:'#dce8ff',fontSize:14}}>(=) Lucro Líquido do Período</span>
-                      <span style={{fontWeight:800,color:dreAtual.lucroLiquido>=0?'#1a9a5c':'#f87171',fontSize:18}}>{dreAtual.lucroLiquido<0?'-':''}{fmt(Math.abs(dreAtual.lucroLiquido))}</span>
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-1.5" style={{fontSize:10,color:'#3d5280'}}>
-                      <Info size={11}/>
-                      Estimativas baseadas nos lançamentos cadastrados. Impostos calculados pelo regime Simples Nacional estimado.
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Sidebar DRE */}
-                <div className="space-y-3">
-                  {/* Margens */}
-                  <Card className="p-4">
-                    <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>📊 Margens</div>
-                    {[
-                      {k:'Margem Bruta',        v:dreAtual.margemBruta,        c:'#1a9a5c'},
-                      {k:'Margem EBITDA',        v:dreAtual.margemEbitda,       c:'#5b9be8'},
-                      {k:'Margem Operacional',   v:dreAtual.margemOperacional,  c:'#f59e0b'},
-                      {k:'Margem Líquida',       v:dreAtual.margemLiquida,      c:dreAtual.margemLiquida>0?'#1a9a5c':'#f87171'},
-                    ].map((m,i)=>(
-                      <div key={i} className="mb-3">
-                        <div className="flex justify-between mb-1" style={{fontSize:11}}>
-                          <span style={{color:'#7a93c8'}}>{m.k}</span>
-                          <span style={{color:m.c,fontWeight:600}}>{fmtP(m.v)}</span>
-                        </div>
-                        <div style={{height:5,background:'rgba(255,255,255,0.05)',borderRadius:99,overflow:'hidden'}}>
-                          <div style={{height:'100%',borderRadius:99,background:m.c,width:`${Math.min(Math.abs(m.v),100)}%`,transition:'width 1s'}}/>
-                        </div>
-                      </div>
-                    ))}
-                  </Card>
-
-                  {/* Resumo */}
-                  <Card className="p-4">
-                    <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>💡 Diagnóstico</div>
-                    <div className="space-y-2" style={{fontSize:11,color:'#3d5280',lineHeight:1.7}}>
-                      {dreAtual.receitaBruta === 0 && <p>Nenhuma receita cadastrada neste período.</p>}
-                      {dreAtual.receitaBruta > 0 && dreAtual.lucroLiquido > 0 && (
-                        <p>✅ Empresa <strong style={{color:'#1a9a5c'}}>lucrativa</strong>. Margem líquida de {fmtP(dreAtual.margemLiquida)}.</p>
-                      )}
-                      {dreAtual.receitaBruta > 0 && dreAtual.lucroLiquido <= 0 && (
-                        <p>⚠️ Resultado <strong style={{color:'#f87171'}}>negativo</strong>. Despesas superam receitas.</p>
-                      )}
-                      {dreAtual.margemLiquida > 20 && <p>🎯 Margem acima de 20% — excelente desempenho.</p>}
-                      {dreAtual.margemLiquida > 0 && dreAtual.margemLiquida <= 20 && <p>📈 Margem positiva. Há espaço para otimização.</p>}
-                    </div>
-                  </Card>
-
-                  {/* Gráfico pizza */}
-                  {dreAtual.receitaBruta > 0 && (
-                    <Card className="p-4">
-                      <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:8}}>Composição</div>
-                      <ResponsiveContainer width="100%" height={140}>
-                        <PieChart>
-                          <Pie data={[
-                            {name:'Custos',v:dreAtual.custosProdutos+dreAtual.custosVariaveis},
-                            {name:'Desp. Op.',v:dreAtual.despPessoal+dreAtual.despMarketing+dreAtual.despAdministrativas},
-                            {name:'Impostos',v:dreAtual.impostos+dreAtual.irCsll},
-                            {name:'Lucro',v:Math.max(0,dreAtual.lucroLiquido)},
-                          ].filter(d=>d.v>0).map(d=>({name:d.name,value:d.v}))}
-                          cx="50%" cy="50%" outerRadius={55} dataKey="value">
-                            {['#f87171','#f59e0b','#5c4db1','#1a9a5c'].map((c,i)=><Cell key={i} fill={c}/>)}
-                          </Pie>
-                          <Tooltip formatter={(v:any)=>fmt(v)} contentStyle={{background:'#0e1530',border:'0.5px solid rgba(99,130,255,0.2)',fontSize:11}}/>
-                          <Legend iconSize={8} wrapperStyle={{fontSize:10,color:'#3d5280'}}/>
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </Card>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ══ VIEW: FLUXO DE CAIXA ══ */}
-          {view === 'fluxo' && (
-            <div className="space-y-4">
-              {/* Filtro */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <div style={{fontSize:10,fontWeight:600,letterSpacing:'1px',textTransform:'uppercase',color:'#3d5280'}}>Período</div>
-                <div className="flex gap-2">
-                  <select value={fluxoMonth} onChange={e=>setFluxoMonth(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-lg outline-none text-xs"
-                    style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff'}}>
-                    {MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}
-                  </select>
-                  <select value={fluxoYear} onChange={e=>setFluxoYear(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-lg outline-none text-xs"
-                    style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff'}}>
-                    {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* KPIs do fluxo */}
-              {(() => {
-                const m = fluxoMonth+1; const a = fluxoYear
-                const entradas = lancamentos.filter(l=>l.tipo==='receita'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
-                const saidas   = lancamentos.filter(l=>l.tipo==='despesa'&&new Date(l.data).getMonth()+1===m&&new Date(l.data).getFullYear()===a).reduce((s,l)=>s+l.valor,0)
-                const saldo    = entradas - saidas
-                return (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <Card className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>ENTRADAS DO MÊS</div>
-                      <div style={{fontSize:22,fontWeight:700,color:'#1a9a5c'}}>{fmt(entradas)}</div>
-                    </Card>
-                    <Card className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>SAÍDAS DO MÊS</div>
-                      <div style={{fontSize:22,fontWeight:700,color:'#f87171'}}>{fmt(saidas)}</div>
-                    </Card>
-                    <Card glow className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>SALDO DO PERÍODO</div>
-                      <div style={{fontSize:22,fontWeight:700,color:saldo>=0?'#1a9a5c':'#f87171'}}>{saldo<0?'-':''}{fmt(Math.abs(saldo))}</div>
-                    </Card>
-                  </div>
-                )
-              })()}
-
-              {/* Gráfico evolução diária */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Evolução Diária — {MESES[fluxoMonth]} {fluxoYear}</div>
-                {fluxoData.length === 0 ? (
-                  <div style={{textAlign:'center',padding:'3rem',fontSize:12,color:'#3d5280'}}>
-                    Nenhum lançamento neste período. Cadastre receitas e despesas para ver o fluxo.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={fluxoData}>
-                      <defs>
-                        <linearGradient id="gradSaldo" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3a7bd5" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#3a7bd5" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                      <XAxis dataKey="dia" tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                      <YAxis tickFormatter={fmtK} tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                      <Tooltip content={<CustomTooltip/>}/>
-                      <Area type="monotone" dataKey="saldo" name="Saldo" stroke="#3a7bd5" fill="url(#gradSaldo)" strokeWidth={2}/>
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              {/* Entradas x Saídas */}
-              {fluxoData.length > 0 && (
-                <Card className="p-4">
-                  <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Entradas × Saídas por Dia</div>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={fluxoData} barGap={4}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                      <XAxis dataKey="dia" tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                      <YAxis tickFormatter={fmtK} tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                      <Tooltip content={<CustomTooltip/>}/>
-                      <Bar dataKey="entradas" name="Entradas" fill="#1a9a5c" radius={[3,3,0,0]}/>
-                      <Bar dataKey="saidas"   name="Saídas"   fill="#f87171" radius={[3,3,0,0]}/>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-              )}
-
-              {/* Tabela de lançamentos do mês */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>Lançamentos do Período</div>
-                <div className="overflow-y-auto" style={{maxHeight:300}}>
-                  {lancamentos
-                    .filter(l=>{const d=new Date(l.data);return d.getMonth()===fluxoMonth&&d.getFullYear()===fluxoYear})
-                    .sort((a,b)=>new Date(b.data).getTime()-new Date(a.data).getTime())
-                    .map((l,i)=>(
-                      <div key={i} className="flex items-center gap-3 px-2 py-2 rounded-lg" style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)'}}>
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{background:l.tipo==='receita'?'rgba(26,154,92,0.15)':'rgba(248,113,113,0.12)'}}>
-                          {l.tipo==='receita'?<ArrowUpRight size={13} color="#1a9a5c"/>:<ArrowDownRight size={13} color="#f87171"/>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div style={{fontSize:11,fontWeight:500,color:'#dce8ff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.descricao}</div>
-                          <div style={{fontSize:10,color:'#3d5280'}}>{l.categoria} · {new Date(l.data).toLocaleDateString('pt-BR')}</div>
-                        </div>
-                        <div style={{fontSize:12,fontWeight:600,color:l.tipo==='receita'?'#1a9a5c':'#f87171',flexShrink:0}}>
-                          {l.tipo==='receita'?'+':'-'}{fmt(l.valor)}
-                        </div>
-                      </div>
-                    ))
-                  }
-                  {lancamentos.filter(l=>{const d=new Date(l.data);return d.getMonth()===fluxoMonth&&d.getFullYear()===fluxoYear}).length === 0 && (
-                    <div style={{textAlign:'center',padding:'2rem',fontSize:12,color:'#3d5280'}}>Nenhum lançamento neste período.</div>
-                  )}
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {/* ══ VIEW: COMPARATIVOS ══ */}
-          {view === 'comparativos' && (
-            <div className="space-y-4">
-              <div style={{fontSize:10,fontWeight:600,letterSpacing:'1.2px',textTransform:'uppercase',color:'#3d5280'}}>
-                Análise Comparativa — Últimos 12 Meses
-              </div>
-
-              {/* KPIs acumulados */}
-              {(() => {
-                const totalRec  = comparativosData.reduce((s,d)=>s+d.receita,0)
-                const totalDep  = comparativosData.reduce((s,d)=>s+d.despesa,0)
-                const totalLuc  = totalRec - totalDep
-                const margMedia = totalRec > 0 ? (totalLuc/totalRec)*100 : 0
-                return (
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <Card className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>RECEITA ACUMULADA</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#3a7bd5'}}>{fmt(totalRec)}</div>
-                    </Card>
-                    <Card className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>DESPESAS ACUMULADAS</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#f87171'}}>{fmt(totalDep)}</div>
-                    </Card>
-                    <Card className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>LUCRO ACUMULADO</div>
-                      <div style={{fontSize:20,fontWeight:700,color:totalLuc>=0?'#1a9a5c':'#f87171'}}>{fmt(totalLuc)}</div>
-                    </Card>
-                    <Card glow className="p-4">
-                      <div style={{fontSize:10,color:'#3d5280',marginBottom:6}}>MARGEM MÉDIA</div>
-                      <div style={{fontSize:20,fontWeight:700,color:'#5b9be8'}}>{fmtP(margMedia)}</div>
-                    </Card>
-                  </div>
-                )
-              })()}
-
-              {/* Gráfico barras comparativo */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Receita × Despesa × Lucro (12 meses)</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={comparativosData} barGap={2}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                    <XAxis dataKey="mes" tick={{fontSize:9,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                    <YAxis tickFormatter={fmtK} tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                    <Tooltip content={<CustomTooltip/>}/>
-                    <Legend iconSize={8} wrapperStyle={{fontSize:10,color:'#3d5280'}}/>
-                    <Bar dataKey="receita" name="Receita" fill="#3a7bd5" radius={[3,3,0,0]}/>
-                    <Bar dataKey="despesa" name="Despesa" fill="#5c4db1" radius={[3,3,0,0]}/>
-                    <Bar dataKey="lucro"   name="Lucro"   fill="#1a9a5c" radius={[3,3,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Gráfico linha margem */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Evolução da Margem Líquida (%)</div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={comparativosData}>
-                    <defs>
-                      <linearGradient id="gradMarg" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#5b9be8" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#5b9be8" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
-                    <XAxis dataKey="mes" tick={{fontSize:9,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                    <YAxis tickFormatter={v=>`${v.toFixed(0)}%`} tick={{fontSize:10,fill:'#3d5280'}} axisLine={false} tickLine={false}/>
-                    <Tooltip formatter={(v:any)=>`${Number(v).toFixed(1)}%`} contentStyle={{background:'#0e1530',border:'0.5px solid rgba(99,130,255,0.2)',fontSize:11}}/>
-                    <Line type="monotone" dataKey="margem" name="Margem %" stroke="#5b9be8" strokeWidth={2} dot={{fill:'#5b9be8',r:3}} activeDot={{r:5}}/>
-                  </LineChart>
-                </ResponsiveContainer>
-              </Card>
-
-              {/* Tabela comparativa */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>Tabela Mensal Detalhada</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full" style={{fontSize:11,borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr style={{borderBottom:'0.5px solid rgba(99,130,255,0.15)'}}>
-                        {['Mês','Receita','Despesa','Lucro','Margem'].map(h=>(
-                          <th key={h} style={{padding:'6px 8px',textAlign:h==='Mês'?'left':'right',color:'#3d5280',fontWeight:600,fontSize:10,letterSpacing:'0.5px',textTransform:'uppercase'}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {comparativosData.map((d,i)=>(
-                        <tr key={i} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)'}}>
-                          <td style={{padding:'7px 8px',color:'#7a93c8'}}>{d.mes}</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',color:'#3a7bd5',fontWeight:500}}>{fmt(d.receita)}</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',color:'#f87171',fontWeight:500}}>{fmt(d.despesa)}</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',color:d.lucro>=0?'#1a9a5c':'#f87171',fontWeight:600}}>{d.lucro<0?'-':''}{fmt(Math.abs(d.lucro))}</td>
-                          <td style={{padding:'7px 8px',textAlign:'right',color:d.margem>0?'#5b9be8':'#f87171',fontWeight:500}}>{fmtP(d.margem)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </div>
-          )}
-
           {/* ══ VIEW: CFO AI ══ */}
           {view === 'ai' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{height:'calc(100vh - 130px)'}}>
               <div className="lg:col-span-2 flex flex-col" style={{height:'100%'}}>
                 <Card className="flex flex-col flex-1 p-4 overflow-hidden">
+                  {/* Header */}
                   <div className="flex items-center gap-3 pb-3 mb-3" style={{borderBottom:'0.5px solid rgba(99,130,255,0.1)'}}>
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{background:'linear-gradient(135deg,#3a7bd5,#5c4db1)'}}>
                       <Bot size={16} color="white"/>
@@ -1007,6 +586,7 @@ export default function DashboardPage() {
                       <span className="w-1.5 h-1.5 rounded-full" style={{background:'#1a9a5c',animation:'pulse2 2s infinite'}}/>Online
                     </div>
                   </div>
+                  {/* Mensagens */}
                   <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 mb-3 pr-1" style={{minHeight:0}}>
                     {chatMsgs.map((m,i)=>(
                       <div key={i} className={`flex ${m.role==='user'?'justify-end':''}`}>
@@ -1022,6 +602,7 @@ export default function DashboardPage() {
                       <div className="flex"><div className="px-3 py-2 rounded-xl" style={{background:'#111938',border:'0.5px solid rgba(99,130,255,0.1)',fontSize:12,color:'#3d5280',fontStyle:'italic'}}>Analisando seus dados...</div></div>
                     )}
                   </div>
+                  {/* Sugestões */}
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {['Como está minha empresa?','Onde gasto mais?','Como melhorar minha margem?','Projeção para o próximo mês'].map(s=>(
                       <button key={s} onClick={()=>{setChatInput(s);}} className="px-2.5 py-1 rounded-full transition-all" style={{fontSize:10,color:'#3d5280',background:'#111938',border:'0.5px solid rgba(99,130,255,0.1)'}}>
@@ -1029,6 +610,7 @@ export default function DashboardPage() {
                       </button>
                     ))}
                   </div>
+                  {/* Input */}
                   <div className="flex gap-2">
                     <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendChat()}
                       placeholder="Pergunte sobre suas finanças..." className="flex-1 px-3 py-2 rounded-lg outline-none text-xs"
@@ -1041,6 +623,7 @@ export default function DashboardPage() {
                   </div>
                 </Card>
               </div>
+              {/* Info sidebar */}
               <div className="space-y-3">
                 <Card className="p-4">
                   <div style={{fontSize:11,color:'#3d5280',marginBottom:10,fontWeight:500}}>📌 Dados disponíveis</div>
@@ -1068,117 +651,19 @@ export default function DashboardPage() {
           {view === 'documentos' && (
             <div style={{textAlign:'center',padding:'4rem',color:'#3d5280'}}>
               <FolderOpen size={40} style={{margin:'0 auto 1rem',opacity:0.4}}/>
-              <div style={{fontSize:14,fontWeight:500,marginBottom:8,color:'#7a93c8'}}>Módulo de Documentos</div>
-              <div style={{fontSize:12,lineHeight:1.7}}>Upload de PDF, imagens e planilhas com análise por IA.<br/>Conecte o Firebase Storage para ativar este módulo.</div>
-              <div className="mt-4 inline-block px-4 py-2 rounded-lg" style={{background:'rgba(58,123,213,0.1)',border:'0.5px solid rgba(58,123,213,0.2)',fontSize:11,color:'#5b9be8'}}>
-                Requer plano Firebase Blaze (pago por uso)
-              </div>
+              <div style={{fontSize:14,fontWeight:500,marginBottom:8}}>Módulo de Documentos</div>
+              <div style={{fontSize:12}}>Upload de PDF, imagens e planilhas com análise por IA.<br/>Conecte o Firebase Storage para ativar este módulo.</div>
             </div>
           )}
 
-          {/* ══ VIEW: RELATÓRIOS ══ */}
-          {view === 'relatorios' && (
-            <div className="space-y-4">
-              <div style={{fontSize:10,fontWeight:600,letterSpacing:'1.2px',textTransform:'uppercase',color:'#3d5280'}}>
-                Relatórios Gerenciais
+          {/* ══ OUTROS VIEWS (placeholder) ══ */}
+          {['dre','fluxo','comparativos','relatorios'].includes(view) && (
+            <div style={{textAlign:'center',padding:'4rem',color:'#3d5280'}}>
+              <div style={{fontSize:32,marginBottom:'1rem'}}>{view==='dre'?'📋':view==='fluxo'?'🌊':view==='comparativos'?'📈':'📄'}</div>
+              <div style={{fontSize:14,fontWeight:500,color:'#7a93c8',marginBottom:8}}>
+                {NAV.find(n=>n.id===view)?.label}
               </div>
-
-              {/* Por categoria */}
-              <Card className="p-4">
-                <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Resultado por Categoria (Acumulado)</div>
-                {relatorioCategoria.length === 0 ? (
-                  <div style={{textAlign:'center',padding:'2rem',fontSize:12,color:'#3d5280'}}>Nenhum lançamento cadastrado ainda.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full" style={{fontSize:11,borderCollapse:'collapse'}}>
-                      <thead>
-                        <tr style={{borderBottom:'0.5px solid rgba(99,130,255,0.15)'}}>
-                          {['Categoria','Receitas','Despesas','Saldo'].map(h=>(
-                            <th key={h} style={{padding:'6px 8px',textAlign:h==='Categoria'?'left':'right',color:'#3d5280',fontWeight:600,fontSize:10,letterSpacing:'0.5px',textTransform:'uppercase'}}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {relatorioCategoria.map((r,i)=>(
-                          <tr key={i} style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)'}}>
-                            <td style={{padding:'7px 8px',color:'#dce8ff'}}>{r.cat}</td>
-                            <td style={{padding:'7px 8px',textAlign:'right',color:'#1a9a5c',fontWeight:500}}>{fmt(r.receita)}</td>
-                            <td style={{padding:'7px 8px',textAlign:'right',color:'#f87171',fontWeight:500}}>{fmt(r.despesa)}</td>
-                            <td style={{padding:'7px 8px',textAlign:'right',color:r.total>=0?'#5b9be8':'#f87171',fontWeight:600}}>{r.total<0?'-':''}{fmt(Math.abs(r.total))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Card>
-
-              {/* Gráfico categorias */}
-              {relatorioCategoria.length > 0 && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Card className="p-4">
-                    <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Receitas por Categoria</div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={relatorioCategoria.filter(r=>r.receita>0).map(r=>({name:r.cat,value:r.receita}))}
-                          cx="50%" cy="50%" outerRadius={70} dataKey="value">
-                          {relatorioCategoria.filter(r=>r.receita>0).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
-                        </Pie>
-                        <Tooltip formatter={(v:any)=>fmt(v)} contentStyle={{background:'#0e1530',border:'0.5px solid rgba(99,130,255,0.2)',fontSize:11}}/>
-                        <Legend iconSize={8} wrapperStyle={{fontSize:10,color:'#3d5280'}}/>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </Card>
-                  <Card className="p-4">
-                    <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Despesas por Categoria</div>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={relatorioCategoria.filter(r=>r.despesa>0).map(r=>({name:r.cat,value:r.despesa}))}
-                          cx="50%" cy="50%" outerRadius={70} dataKey="value">
-                          {relatorioCategoria.filter(r=>r.despesa>0).map((_,i)=><Cell key={i} fill={['#f87171','#f59e0b','#5c4db1','#fc8181','#fcd34d','#a78bfa'][i%6]}/>)}
-                        </Pie>
-                        <Tooltip formatter={(v:any)=>fmt(v)} contentStyle={{background:'#0e1530',border:'0.5px solid rgba(99,130,255,0.2)',fontSize:11}}/>
-                        <Legend iconSize={8} wrapperStyle={{fontSize:10,color:'#3d5280'}}/>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </Card>
-                </div>
-              )}
-
-              {/* Resumo executivo */}
-              {kpis && (
-                <Card className="p-5">
-                  <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>📋 Relatório Executivo — {now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                    {[
-                      {k:'Receita do Mês',  v:fmt(kpis.receitaMes),    c:'#3a7bd5'},
-                      {k:'Despesas do Mês', v:fmt(kpis.despesasMes),   c:'#f87171'},
-                      {k:'Lucro Líquido',   v:fmt(kpis.lucroLiquido),  c:kpis.lucroLiquido>=0?'#1a9a5c':'#f87171'},
-                      {k:'Margem Líquida',  v:fmtP(kpis.margemLiquida), c:'#5b9be8'},
-                    ].map((item,i)=>(
-                      <div key={i} className="p-3 rounded-lg" style={{background:'rgba(255,255,255,0.02)',border:'0.5px solid rgba(99,130,255,0.08)'}}>
-                        <div style={{fontSize:10,color:'#3d5280',marginBottom:4}}>{item.k}</div>
-                        <div style={{fontSize:16,fontWeight:700,color:item.c}}>{item.v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <p style={{fontSize:12,color:'#7a93c8',lineHeight:1.8}}>
-                    {kpis.receitaMes > 0
-                      ? `A empresa registrou receita de ${fmt(kpis.receitaMes)} com despesas de ${fmt(kpis.despesasMes)}, resultando em ${kpis.lucroLiquido >= 0 ? 'lucro' : 'prejuízo'} de ${fmt(Math.abs(kpis.lucroLiquido))} e margem líquida de ${fmtP(kpis.margemLiquida)}. EBITDA de ${fmt(kpis.ebitda)} representa ${fmtP(kpis.ebitda/Math.max(kpis.receitaMes,1)*100)} da receita bruta.`
-                      : 'Nenhum lançamento registrado no período atual. Cadastre receitas e despesas para gerar o relatório executivo.'
-                    }
-                  </p>
-                  <div className="mt-4 flex gap-2">
-                    <button onClick={()=>toast.success('Exportação em PDF em breve!')} className="px-4 py-2 rounded-lg text-xs font-medium" style={{background:'rgba(58,123,213,0.1)',border:'0.5px solid rgba(58,123,213,0.2)',color:'#5b9be8'}}>📄 Exportar PDF</button>
-                    <button onClick={()=>toast.success('Exportação em Excel em breve!')} className="px-4 py-2 rounded-lg text-xs font-medium" style={{background:'rgba(26,154,92,0.1)',border:'0.5px solid rgba(26,154,92,0.2)',color:'#1a9a5c'}}>📊 Exportar Excel</button>
-                  </div>
-                </Card>
-              )}
-
-              {/* Rodapé */}
-              <div style={{textAlign:'center',fontSize:10,color:'#3d5280',paddingTop:8}}>
-                Desenvolvido por Alexandre Amorim | Tríade Resultados
-              </div>
+              <div style={{fontSize:12}}>Módulo em construção. Dados disponíveis assim que os lançamentos forem cadastrados.</div>
             </div>
           )}
 

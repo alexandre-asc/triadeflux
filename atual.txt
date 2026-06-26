@@ -13,7 +13,7 @@ import {
   Bell, Upload, FileText, LogOut, LayoutDashboard, PenLine,
   FolderOpen, BarChart2, Waves, GitCompare, Bot, Menu, X,
   ChevronUp, ChevronDown, Send, Loader2, ArrowUpRight, ArrowDownRight,
-  Calendar, Filter, Download, RefreshCw, Info, Pencil, Trash2, Check
+  Calendar, Filter, Download, RefreshCw, Info
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -117,14 +117,6 @@ export default function DashboardPage() {
     descricao:'', categoria:'Serviços', centroCusto:'Comercial', valor:'', pago:false
   })
   const [lancLoading, setLancLoading] = useState(false)
-
-  // Edição de lançamento
-  const [editando, setEditando] = useState<Lancamento | null>(null)
-  const [editForm, setEditForm] = useState({
-    tipo:'receita' as 'receita'|'despesa', data:'', descricao:'', categoria:'', centroCusto:'', valor:'', pago:false
-  })
-  const [editLoading, setEditLoading] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState<string|null>(null)
 
   // Redirect
   useEffect(() => {
@@ -256,46 +248,7 @@ export default function DashboardPage() {
     finally { setLancLoading(false) }
   }
 
-  // Abrir modal de edição
-  function abrirEditar(l: Lancamento) {
-    setEditando(l)
-    setEditForm({
-      tipo: l.tipo, data: l.data, descricao: l.descricao,
-      categoria: l.categoria, centroCusto: l.centroCusto,
-      valor: String(l.valor), pago: l.pago ?? false
-    })
-  }
-
-  // Salvar edição
-  async function salvarEdicao(e: React.FormEvent) {
-    e.preventDefault()
-    if (!tenant?.id || !editando?.id) return
-    setEditLoading(true)
-    try {
-      const { updateLancamento } = await import('@/lib/firestore')
-      await updateLancamento(tenant.id, editando.id, {
-        tipo: editForm.tipo, data: editForm.data, descricao: editForm.descricao,
-        categoria: editForm.categoria, centroCusto: editForm.centroCusto,
-        valor: parseFloat(editForm.valor), pago: editForm.pago,
-      })
-      toast.success('Lançamento atualizado!')
-      setEditando(null)
-      await loadData()
-    } catch { toast.error('Erro ao atualizar lançamento') }
-    finally { setEditLoading(false) }
-  }
-
-  // Apagar lançamento
-  async function apagarLancamento(id: string) {
-    if (!tenant?.id) return
-    try {
-      const { deleteLancamento } = await import('@/lib/firestore')
-      await deleteLancamento(tenant.id, id)
-      toast.success('Lançamento excluído!')
-      setConfirmDelete(null)
-      await loadData()
-    } catch { toast.error('Erro ao excluir lançamento') }
-  }
+  const now_bsb = now.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'})
   const date_bsb = now.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',year:'numeric'})
 
   if (loading || dataLoading) return (
@@ -558,104 +511,6 @@ export default function DashboardPage() {
           {/* ══ VIEW: LANÇAMENTOS ══ */}
           {view === 'lancamentos' && (
             <div className="space-y-4">
-
-              {/* Modal de edição */}
-              {editando && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={()=>setEditando(null)}>
-                  <div onClick={e=>e.stopPropagation()} className="rounded-xl w-full max-w-md mx-4"
-                    style={{background:'#0b1020',border:'0.5px solid rgba(99,130,255,0.2)',padding:24}}>
-                    <div className="flex items-center justify-between mb-4">
-                      <div style={{fontSize:13,fontWeight:600,color:'#dce8ff'}}>Editar Lançamento</div>
-                      <button onClick={()=>setEditando(null)} style={{color:'#3d5280'}}><X size={16}/></button>
-                    </div>
-                    <form onSubmit={salvarEdicao} className="space-y-3">
-                      <div className="flex gap-2">
-                        {(['receita','despesa'] as const).map(t=>(
-                          <button type="button" key={t} onClick={()=>setEditForm(f=>({...f,tipo:t}))}
-                            className="flex-1 py-2 rounded-lg text-xs font-medium transition-all"
-                            style={{background:editForm.tipo===t?(t==='receita'?'rgba(26,154,92,0.2)':'rgba(248,113,113,0.15)'):'rgba(255,255,255,0.04)',color:editForm.tipo===t?(t==='receita'?'#1a9a5c':'#f87171'):'#3d5280',border:`0.5px solid ${editForm.tipo===t?(t==='receita'?'rgba(26,154,92,0.3)':'rgba(248,113,113,0.25)'):'rgba(99,130,255,0.08)'}`}}>
-                            {t==='receita'?'➕ Receita':'➖ Despesa'}
-                          </button>
-                        ))}
-                      </div>
-                      {[
-                        {label:'Data',       key:'data',      type:'date'},
-                        {label:'Descrição',  key:'descricao', type:'text'},
-                        {label:'Valor (R$)', key:'valor',     type:'number'},
-                      ].map(f=>(
-                        <div key={f.key}>
-                          <label style={{display:'block',fontSize:11,color:'#7a93c8',marginBottom:4}}>{f.label}</label>
-                          <input type={f.type} required value={(editForm as any)[f.key]}
-                            onChange={e=>setEditForm(p=>({...p,[f.key]:e.target.value}))}
-                            className="w-full px-3 py-2 rounded-lg outline-none"
-                            style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff',fontSize:12}}/>
-                        </div>
-                      ))}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label style={{display:'block',fontSize:11,color:'#7a93c8',marginBottom:4}}>Categoria</label>
-                          <select value={editForm.categoria} onChange={e=>setEditForm(p=>({...p,categoria:e.target.value}))}
-                            className="w-full px-3 py-2 rounded-lg outline-none"
-                            style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff',fontSize:12}}>
-                            {editForm.tipo==='receita'
-                              ?['Serviços','Produtos','Consultoria','Recorrente','Comissões','Outros'].map(c=><option key={c}>{c}</option>)
-                              :['Pessoal','Marketing','Operacional','Financeiro','Impostos','TI','Administrativo','Outros'].map(c=><option key={c}>{c}</option>)
-                            }
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{display:'block',fontSize:11,color:'#7a93c8',marginBottom:4}}>Centro de Custo</label>
-                          <select value={editForm.centroCusto} onChange={e=>setEditForm(p=>({...p,centroCusto:e.target.value}))}
-                            className="w-full px-3 py-2 rounded-lg outline-none"
-                            style={{background:'#0c1228',border:'0.5px solid rgba(99,130,255,0.15)',color:'#dce8ff',fontSize:12}}>
-                            {['Comercial','Marketing','RH','TI','Operações','Financeiro','Administrativo'].map(c=><option key={c}>{c}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input type="checkbox" id="editPago" checked={editForm.pago} onChange={e=>setEditForm(p=>({...p,pago:e.target.checked}))} style={{accentColor:'#3a7bd5'}}/>
-                        <label htmlFor="editPago" style={{fontSize:11,color:'#7a93c8'}}>{editForm.tipo==='receita'?'Já recebido':'Já pago'}</label>
-                      </div>
-                      <div className="flex gap-2 pt-1">
-                        <button type="button" onClick={()=>setEditando(null)}
-                          className="flex-1 py-2 rounded-lg text-xs font-medium"
-                          style={{background:'rgba(255,255,255,0.04)',border:'0.5px solid rgba(99,130,255,0.1)',color:'#7a93c8'}}>
-                          Cancelar
-                        </button>
-                        <button type="submit" disabled={editLoading}
-                          className="flex-1 py-2 rounded-lg text-xs font-semibold text-white"
-                          style={{background:'linear-gradient(135deg,#3a7bd5,#5c4db1)',opacity:editLoading?0.7:1}}>
-                          {editLoading?'Salvando...':'Salvar Alterações'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* Modal confirmação de exclusão */}
-              {confirmDelete && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={()=>setConfirmDelete(null)}>
-                  <div onClick={e=>e.stopPropagation()} className="rounded-xl w-full max-w-sm mx-4"
-                    style={{background:'#0b1020',border:'0.5px solid rgba(248,113,113,0.3)',padding:24}}>
-                    <div style={{fontSize:14,fontWeight:600,color:'#dce8ff',marginBottom:8}}>Confirmar exclusão</div>
-                    <p style={{fontSize:12,color:'#7a93c8',marginBottom:20}}>Tem certeza? Esta ação não pode ser desfeita.</p>
-                    <div className="flex gap-2">
-                      <button onClick={()=>setConfirmDelete(null)}
-                        className="flex-1 py-2 rounded-lg text-xs font-medium"
-                        style={{background:'rgba(255,255,255,0.04)',border:'0.5px solid rgba(99,130,255,0.1)',color:'#7a93c8'}}>
-                        Cancelar
-                      </button>
-                      <button onClick={()=>apagarLancamento(confirmDelete)}
-                        className="flex-1 py-2 rounded-lg text-xs font-semibold"
-                        style={{background:'rgba(248,113,113,0.15)',border:'0.5px solid rgba(248,113,113,0.3)',color:'#f87171'}}>
-                        Sim, excluir
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card className="p-4">
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:16}}>Novo Lançamento</div>
@@ -719,29 +574,14 @@ export default function DashboardPage() {
                   <div style={{fontSize:12,fontWeight:500,color:'#7a93c8',marginBottom:12}}>Últimos Lançamentos</div>
                   <div className="space-y-1 overflow-y-auto" style={{maxHeight:420}}>
                     {lancamentos.slice(0,20).map((l,i)=>(
-                      <div key={i} className="flex items-center gap-3 px-2 py-2 rounded-lg group" style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)'}}>
-                        <span style={{fontSize:14,flexShrink:0}}>{l.tipo==='receita'?'↑':'↓'}</span>
+                      <div key={i} className="flex items-center gap-3 px-2 py-2 rounded-lg" style={{borderBottom:'0.5px solid rgba(255,255,255,0.03)'}}>
+                        <span style={{fontSize:14}}>{l.tipo==='receita'?'↑':'↓'}</span>
                         <div className="flex-1 min-w-0">
                           <div style={{fontSize:11,fontWeight:500,color:'#dce8ff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.descricao}</div>
                           <div style={{fontSize:10,color:'#3d5280'}}>{l.categoria} · {new Date(l.data).toLocaleDateString('pt-BR')}</div>
                         </div>
                         <div style={{fontSize:12,fontWeight:600,color:l.tipo==='receita'?'#1a9a5c':'#f87171',flexShrink:0}}>
                           {l.tipo==='receita'?'+':'-'}{fmt(l.valor)}
-                        </div>
-                        {/* Botões ação */}
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button onClick={()=>abrirEditar(l)}
-                            className="w-6 h-6 rounded flex items-center justify-center transition-all"
-                            style={{background:'rgba(58,123,213,0.1)',border:'0.5px solid rgba(58,123,213,0.2)'}}
-                            title="Editar">
-                            <Pencil size={10} color="#5b9be8"/>
-                          </button>
-                          <button onClick={()=>setConfirmDelete(l.id)}
-                            className="w-6 h-6 rounded flex items-center justify-center transition-all"
-                            style={{background:'rgba(248,113,113,0.1)',border:'0.5px solid rgba(248,113,113,0.2)'}}
-                            title="Excluir">
-                            <Trash2 size={10} color="#f87171"/>
-                          </button>
                         </div>
                       </div>
                     ))}

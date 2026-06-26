@@ -142,4 +142,4 @@ Responda SOMENTE o JSON, sem texto adicional.`,
   }
 }
 
-export const config = { api: { bodyParser: false } }
+export const maxDuration = 60

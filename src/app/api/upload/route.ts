@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
-import { adminAuth, adminStorage, adminDb } from '@/lib/firebase-admin'
+import { adminAuth, adminDb } from '@/lib/firebase-admin'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-export const maxDuration = 60
+export const maxDuration = 30
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,25 +9,27 @@ export async function POST(req: NextRequest) {
     if (!token) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     const decoded = await adminAuth.verifyIdToken(token)
     const tenantId = decoded.tenantId as string
+    if (!tenantId) return NextResponse.json({ error: 'Tenant não encontrado' }, { status: 403 })
 
     const formData = await req.formData()
     const file = formData.get('file') as File
     if (!file) return NextResponse.json({ error: 'Arquivo não enviado' }, { status: 400 })
 
-    const bytes  = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const ext    = file.name.split('.').pop()?.toLowerCase() || 'bin'
-    const isImg  = ['png','jpg','jpeg','webp'].includes(ext)
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
 
     const docRef = await adminDb
       .collection('tenants').doc(tenantId)
       .collection('documentos').add({
         tenantId,
-        nome:       file.name,
-        tipo:       isImg ? 'imagem' : ext,
-        tamanho:    file.size,
-        status:     'analisado',
-        analise: { resumo: 'Arquivo recebido.', insights: [], analisadoEm: new Date().toISOString() },
+        nome: file.name,
+        tipo: ext,
+        tamanho: file.size,
+        status: 'analisado',
+        analise: {
+          resumo: 'Arquivo recebido com sucesso.',
+          insights: ['Importe os dados manualmente ou ative o Storage para análise por IA.'],
+          analisadoEm: new Date().toISOString(),
+        },
         uploadedAt: new Date().toISOString(),
         uploadedBy: decoded.uid,
       })

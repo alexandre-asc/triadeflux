@@ -25,7 +25,7 @@ function StatusPill({ status }: { status: Tenant['status'] }) {
 const EMPTY_FORM = { name:'', ownerName:'', email:'', password:'', cpfCnpj:'', phone:'', city:'', plan:'starter' as Tenant['plan'], mrr:297, startDate: new Date().toISOString().split('T')[0], dueDate: new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0], status:'ativo' as Tenant['status'], notes:'' }
 
 export default function MasterPage() {
-  const { user, isMaster, loading, signOut } = useAuth()
+  const { user, isMaster, loading, signOut, getToken } = useAuth()
   const router = useRouter()
 
   const [tenants,    setTenants]    = useState<Tenant[]>([])
@@ -44,7 +44,7 @@ export default function MasterPage() {
 
   useEffect(() => {
     const q = search.toLowerCase()
-    setFiltered(q ? tenants.filter(t => t.name.toLowerCase().includes(q) || t.company?.toLowerCase().includes(q) || t.email.toLowerCase().includes(q)) : tenants)
+    setFiltered(q ? tenants.filter(t => t.name.toLowerCase().includes(q) || t.ownerName?.toLowerCase().includes(q) || t.email.toLowerCase().includes(q)) : tenants)
   }, [search, tenants])
 
   async function load() {
@@ -62,12 +62,15 @@ export default function MasterPage() {
         await updateTenant(editId, { name: form.name, ownerName: form.ownerName, email: form.email, cpfCnpj: form.cpfCnpj, phone: form.phone, city: form.city, plan: form.plan, mrr: form.mrr, startDate: form.startDate, dueDate: form.dueDate, status: form.status, notes: form.notes })
         toast.success('Cliente atualizado!')
       } else {
-        // Criar usuário no Firebase Auth
-        const cred = await createUserWithEmailAndPassword(auth, form.email, form.password)
-        // Criar tenant no Firestore
-        const tenantId = await createTenant({ name: form.name, ownerName: form.ownerName, email: form.email, cpfCnpj: form.cpfCnpj, phone: form.phone, city: form.city, plan: form.plan, mrr: form.mrr, startDate: form.startDate, dueDate: form.dueDate, status: form.status, notes: form.notes })
-        // Criar perfil do usuário
-        await setDoc(doc(db, 'users', cred.user.uid), { email: form.email, name: form.ownerName||form.name, role: 'admin', tenantId, createdAt: serverTimestamp() })
+        // Criar cliente via API do servidor (não desloga o master)
+        const token = await getToken()
+        const res = await fetch('/api/tenants', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(form),
+        })
+        const data = await res.json()
+        if (!res.ok) { toast.error(data.error || 'Erro ao cadastrar'); setSaving(false); return }
         toast.success('Cliente cadastrado com sucesso!')
       }
       setModal(false); setForm(EMPTY_FORM); setEditId(null); await load()

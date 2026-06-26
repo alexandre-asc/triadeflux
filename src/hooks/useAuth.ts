@@ -39,7 +39,7 @@ export function useAuth() {
           setState(s => ({ ...s, firebaseUser: fbUser, loading: false, error: 'Usuário não encontrado' }))
           return
         }
-        const userData = { id: fbUser.uid, ...userSnap.data() } as User
+        const userData = { uid: fbUser.uid, ...userSnap.data() } as User
         const isMaster = userData.role === 'master' || fbUser.email === process.env.NEXT_PUBLIC_MASTER_EMAIL
 
         let tenant: Tenant | null = null
